@@ -100,23 +100,81 @@ Conflicts in jj are first-class: a change can *be* conflicted and you can still 
 top of it, describe it, or set it aside — nothing blocks until you're ready to resolve.
 
 ```shell
-jj status               # conflicted files are listed here
+jj resolve --list         # start here: what's conflicted, without touching anything
+jj status               # conflicted files are also listed here
 jj log                  # conflicted changes are flagged
 jj resolve               # interactively resolve the next conflicted file (opens a merge tool)
 jj resolve --tool <tool>  # use a specific merge tool
-jj resolve --list         # list conflicted files without resolving
 ```
 
-If no merge tool is configured, jj writes standard conflict markers into the file
-(similar to git's `<<<<<<<`/`=======`/`>>>>>>>`, with extra context for jj's
-multi-parent conflicts) — edit the file directly to resolve, same as resolving a git
-merge conflict by hand. Once every conflicted file is resolved, `jj status` stops
-listing conflicts and the change is clean.
+If no merge tool is configured, jj writes conflict markers into the file. They only
+share the outer `<<<<<<<`/`>>>>>>>` bracket syntax with git — there's no plain
+`=======` divider. Each side after the first is rendered as a diff from the base
+(`%%%%%%% diff from: ... \\\\\\\ to: ...` with `-`/`+` lines) except the last, which is
+shown as plain content after a `+++++++ <side>` line; the block closes with
+`>>>>>>> conflict K of M ends`. See the Limits section below for what a real block looks
+like. Because conflicts live inside the change rather than blocking the working copy,
+there's no rush — `jj new` on top, `jj edit`-ing away and back, even pushing (if policy
+allows) all leave the conflict exactly as it was. Resolve whenever convenient.
 
-Because conflicts live inside the change (not the working copy state), `jj new` on top
-of a conflicted change, `jj edit`-ing away and back, or even pushing (if your policy
-allows it) — none of that loses the conflict or forces immediate resolution. Resolve
-whenever it's convenient.
+### Resolution procedure
+
+1. `jj resolve --list` — see what's actually conflicted before touching anything.
+2. **Prefer rebuilding over hand-editing markers.** To favor one side with changes of
+   your own: `jj edit <that side>` (or `jj new` off it), edit the file as plain text
+   with *no markers at all*, then re-merge with `jj new <your-edited-rev> <other-side>`.
+   jj recomputes the 3-way diff itself and only flags real remaining differences — this
+   sidesteps marker editing (and its failure mode below) entirely.
+3. If you need per-hunk control and step 2 doesn't fit, `jj resolve --tool :ours` /
+   `:theirs` resolves a whole file toward one side — but only for 2-sided conflicts (see
+   Limits).
+4. If hand-editing markers directly (last resort): touch whole marker blocks only,
+   never partially — see Gotcha below for why. Re-run `jj resolve --list` after each
+   edit; it should shrink, never vanish all at once unless you really resolved
+   everything.
+5. Done once `jj resolve --list` reports nothing. There's no separate "mark resolved"
+   command — once every marker block is gone from the file, the next snapshot (which
+   almost any jj command triggers, including `jj status` itself, or the filesystem
+   watcher if one's configured) re-parses the file, finds it matches a resolution, and
+   the conflict clears on its own.
+
+### Limits
+
+- **2-sided only for `:ours`/`:theirs`.** A 3+-parent merge refuses outright:
+  `"The conflict at "f.txt" has 3 sides. At most 2 sides are supported."` Fix: pairwise
+  reduction — `jj new side1 side2 -m tmp`, resolve (now 2-sided), bookmark it,
+  `jj new <resolved> side3 -m tmp2`, resolve again, repeat per remaining side. Fully
+  associative; a trailing `jj rebase -s <old-descendant> -d <resolved-commit>` cleanly
+  reparents descendants afterward.
+- **Multi-hunk files are pre-segmented.** jj materializes disjoint conflicting regions
+  as separate numbered blocks in one file, e.g. (2-sided, 2 hunks):
+  ```
+  <<<<<<< conflict 1 of 2
+  %%%%%%% diff from: abc1234 "base"
+  \\\\\\\        to: def5678 "sideA"
+  -line2
+  +AAA
+  +++++++ ghi9012 "sideB"
+  CCC
+  >>>>>>> conflict 1 of 2 ends
+  ```
+  Resolve block 1 in isolation while leaving block 2's markers untouched —
+  `jj resolve --list` still reports the file conflicted until every block is gone. Makes
+  batch/regex-driven resolution of individual hunks viable.
+- **No hunk-level split into separate changes.** `jj split <path>` is file-granular, not
+  hunk-granular — it relocates a file's whole conflict state, it can't carve one hunk
+  out into its own change. Hunk batching has to happen in-place within the file.
+
+### Gotcha: a malformed marker edit silently "resolves" the file
+
+jj has no sticky resolved/unresolved flag — it re-derives conflict state by re-parsing
+marker text on *every* snapshot. Resolving some hunks while leaving other marker blocks
+intact and well-formed still correctly reports conflicted. But break one block's
+begin/end pairing (e.g. delete the closing `>>>>>>> conflict K of M ends` line) and jj's
+parser just gives up recognizing it — the file is silently accepted as fully resolved
+plain text, with the literal `<<<<<<<`/`%%%%%%%`/`+++++++` lines left behind as ordinary
+tracked content, no warning at all. Not a jj bug — an incomplete hand-edit. This is
+exactly why step 4 above says whole blocks only, never partial.
 
 ## Recovery
 
