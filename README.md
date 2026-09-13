@@ -28,3 +28,7 @@ claude plugin install <plugin-name>@mu-mind-agent-plugins
 ```
 
 Cursor: same repo, reads `.cursor-plugin/marketplace.json` instead. See per-plugin READMEs/SKILL.md for details.
+
+## Contributing
+
+See `CONTRIBUTING.md`.

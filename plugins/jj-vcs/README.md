@@ -4,6 +4,24 @@ Jujutsu (jj) version control skill: what it is, git-vs-jj command mapping, every
 workflow, selective squash/split, and conflict resolution. See
 [`skills/jj-vcs/SKILL.md`](skills/jj-vcs/SKILL.md) for the actual skill content.
 
+## Hook: working-copy lifecycle hints (Claude Code only)
+
+`hooks/check-jj-working-copy.sh` is a `PreToolUse` hook on Edit/Write/NotebookEdit that
+surfaces an advisory hint — never blocks — at two moments agents otherwise tend to miss
+because jj's working copy is always `@` and auto-snapshots on every edit (no git-style
+explicit commit to catch mistakes at):
+
+- First edit this session into a change with no description set yet.
+- The current change id drifting since this session last checked it (something ran
+  `jj edit`/`jj new`/`jj undo` and the working copy isn't what it was).
+
+Fails open silently if `jj`/`jq` aren't on `PATH` or the target path isn't inside a jj
+repo. **Claude Code only, not yet ported to Cursor.** Cursor's `preToolUse` is allow/deny
+only (no advisory-allow), but its `postToolUse` hook *does* support this via
+`additional_context` — injects a message after the tool runs without blocking it. A
+Cursor port is possible, it'd just fire after the edit instead of before; not built yet.
+See root `CONTRIBUTING.md`'s "Writing hooks for both tools" note for the general pattern.
+
 ## Why build this instead of using an existing skill
 
 jj already has a lot of Claude Code skills available. Surveyed before building:

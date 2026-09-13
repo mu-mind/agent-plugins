@@ -35,6 +35,9 @@ See README.md for what this repo is and how it's installed. See each plugin's
   If a plugin does something tool-specific, say so explicitly and guard for it, rather
   than writing instructions that silently only work on one side.
 
+See `CONTRIBUTING.md` for contributor-facing dev notes (e.g. writing hooks that work
+across both Claude Code and Cursor).
+
 ## Testing changes in development
 
 - `hk check` (and `jj-hp run` if using jj-hooks) validate lint/shellcheck/JSON/secrets
